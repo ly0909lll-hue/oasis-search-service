@@ -1,6 +1,7 @@
 import hmac
 import json
 import os
+import re
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -131,10 +132,21 @@ class Handler(BaseHTTPRequestHandler):
                     return
                 self.send_json(response.status, parsed_data)
         except urllib.error.HTTPError as error:
-            # Preserve actionable status codes while never returning provider
-            # response bodies that could contain sensitive request details.
+            # Return only the provider's machine-readable code/type. The message
+            # and full body can contain request details, so never forward them.
             status = error.code if error.code in (400, 401, 403, 429) else 502
-            self.send_json(status, {"error": "AI provider request failed"})
+            details = {}
+            try:
+                body = json.loads(error.read(64_001))
+                provider_error = body.get("error") if isinstance(body, dict) else None
+                if isinstance(provider_error, dict):
+                    for field in ("code", "type"):
+                        value = provider_error.get(field)
+                        if isinstance(value, str) and re.fullmatch(r"[A-Za-z0-9_.-]{1,80}", value):
+                            details["provider_" + field] = value
+            except Exception:
+                pass
+            self.send_json(status, {"error": "AI provider request failed", **details})
         except Exception:
             self.send_json(502, {"error": "AI provider unavailable"})
 
