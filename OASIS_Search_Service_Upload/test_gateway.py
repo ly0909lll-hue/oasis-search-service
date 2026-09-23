@@ -2,6 +2,7 @@ import http.client
 import json
 import os
 import threading
+import urllib.error
 import unittest
 from unittest.mock import patch
 
@@ -82,6 +83,25 @@ class GatewayQualificationTests(unittest.TestCase):
         self.assertEqual(captured["authorization"], "Bearer server-only-test-key")
         self.assertEqual(captured["body"]["model"], "gpt-4.1-mini")
         self.assertEqual(captured["timeout"], 35)
+
+    def test_exposes_only_safe_provider_error_code_and_type(self):
+        upstream = json.dumps({"error": {
+            "message": "private prompt content must never be returned",
+            "type": "insufficient_quota",
+            "code": "insufficient_quota",
+        }}).encode()
+        failure = urllib.error.HTTPError(
+            "https://api.openai.com/v1/chat/completions", 429, "Too Many Requests", {},
+            __import__("io").BytesIO(upstream),
+        )
+        with patch.object(gateway, "OPENAI_API_KEY", "server-only-test-key"), \
+             patch.object(gateway.urllib.request, "urlopen", side_effect=failure):
+            status, body = self.post("/v1/chat/completions", {"messages": [{"role": "user", "content": "private"}]}, gateway.TOKEN)
+
+        self.assertEqual(status, 429)
+        self.assertEqual(body, {"error": "AI provider request failed", "provider_code": "insufficient_quota", "provider_type": "insufficient_quota"})
+        self.assertNotIn("message", json.dumps(body))
+        self.assertNotIn("private", json.dumps(body))
 
 
 if __name__ == "__main__":
