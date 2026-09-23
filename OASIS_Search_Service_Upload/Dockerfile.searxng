@@ -1,4 +1,4 @@
-FROM searxng/searxng:latest
+FROM ghcr.io/searxng/searxng:latest
 
 # Railway builds this service from the same directory as the gateway, but keeps
 # it private on the Railway project network.
