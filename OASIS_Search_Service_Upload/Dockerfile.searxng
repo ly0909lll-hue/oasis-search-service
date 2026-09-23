@@ -1,0 +1,7 @@
+FROM searxng/searxng:latest
+
+# Railway builds this service from the same directory as the gateway, but keeps
+# it private on the Railway project network.
+COPY settings.yml /etc/searxng/settings.yml
+
+EXPOSE 8080
